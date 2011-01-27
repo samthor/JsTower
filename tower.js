@@ -355,9 +355,9 @@ var TowerLift = $.type({
     var text = "";
     if (this.direction_ != 0) {
       if (this.direction_ > 0) {
-        text += "↥";
+        text += "\u21a5";
       } else {
-        text += "↧";
+        text += "\u21a7";
       }
     }
     if (this.people.length > 0) {

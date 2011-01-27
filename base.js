@@ -4,7 +4,11 @@ window.$ = window.$ || function(id) {
 };
 
 window.log = window.log || function(message) {
-  window.console.info(message);
+  if (window.console && window.console.info) {
+    window.console.info(message);
+  } else {
+    // this poor browser has no logging capability
+  }
 }
 
 /**
@@ -65,4 +69,11 @@ Function.prototype.callIn = function(low, high) {
     delay = Math.randInt(low, high);
   }
   return setTimeout(this, delay);
+};
+
+Function.prototype.bind = Function.prototype.bind || function(context) {
+  var fn = this;
+  return function() {
+    return fn.apply(context, arguments);
+  };
 };
