@@ -9,7 +9,47 @@ window.log = window.log || function(message) {
   } else {
     // this poor browser has no logging capability
   }
-}
+};
+
+/**
+ * onEachFrame defines a method that will request rendering at the refresh
+ * rate of the machine; or failing that, at a rate of 60 FPS.
+ */
+(function() {
+  var onEachFrame_;
+  var active = true;
+
+  if (window.webkitRequestAnimationFrame) {
+    onEachFrame_ = function(cb) {
+      var _cb = function() { cb(); if (active) { webkitRequestAnimationFrame(_cb); } }
+      _cb();
+    };
+  } else if (window.mozRequestAnimationFrame) {
+    onEachFrame_ = function(cb) {
+      var _cb = function() { cb(); if (active) { mozRequestAnimationFrame(_cb); } }
+      _cb();
+    };
+  } else {
+    onEachFrame_ = function(cb, fps) {
+      if (!fps) {
+        fps = 60;
+      }
+      active = setInterval(cb, 1000 / fps);
+    }
+  }
+
+  window.onEachFrame = function(cb, fps) {
+    onEachFrame_(cb, fps);
+
+    return function() {
+      if (active == true) {
+        active = false;
+      } else {
+        clearInterval(active);
+      }
+    };
+  };
+})();
 
 /**
  * $.type returns a class generator method to generate classes with the given

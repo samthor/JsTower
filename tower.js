@@ -30,6 +30,13 @@ var ROOM = {
   cafe: 2,
 };
 
+/*
+var TowerGame = {};
+TowerGame.init = function() {
+  this.canvas = document.createElement('canvas');
+  this.context = this.canvas.getContext('2d');
+};
+*/
 var TowerBase = $.type({
 
   init: function(min, width) {
@@ -40,7 +47,7 @@ var TowerBase = $.type({
     this.overlay = [];
     this.rooms = {};
 
-    setInterval(function() {
+    window.onEachFrame(function() {
       this.resetSize_();
       this.clearCanvas_();
 
@@ -49,7 +56,7 @@ var TowerBase = $.type({
       context.translate(this.midpoint, this.canvas.height);
       this.draw_(context);
       context.restore();
-    }.bind(this), 50);
+    }.bind(this));
   },
 
   go: function() {
