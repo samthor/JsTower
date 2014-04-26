@@ -17,8 +17,9 @@ function init() {
   t.addRoom(1, 0, new RoomCafe());
   t.addRoom(1, -7, new RoomCafe());
   t.addRoom(4, 0, new RoomCafe());
+  t.addRoom(5, 0, new RoomOffice());
 
-  t.addLift(new TowerLift(1, 5));
+  t.addLift(new TowerLift(1, 6));
 
   $('container').appendChild(t.canvas);
 
