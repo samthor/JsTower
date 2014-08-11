@@ -7,7 +7,7 @@
   }
   #shaft {
     position: absolute;
-    background: url(/resources/shaft.png) repeat-y center bottom;
+    background: url(resources/shaft.png) repeat-y center bottom;
     opacity: 0.5;
     width: 36px;
     min-height: 36px;
@@ -25,7 +25,7 @@
     top: -36px;
     width: 36px;
     height: 36px;
-    background: url(/resources/shaft-top.png) center no-repeat;
+    background: url(resources/shaft-top.png) center no-repeat;
   }
   #shaft::after {
     position: absolute;
@@ -34,7 +34,7 @@
     bottom: -36px;
     width: 36px;
     height: 36px;
-    background: url(/resources/shaft-bottom.png) center no-repeat;
+    background: url(resources/shaft-bottom.png) center no-repeat;
   }
   </style>
   <div id="shaft">
@@ -46,7 +46,7 @@
   :host {
     display: block;
     position: absolute;
-    background: url(/resources/lift.png);
+    background: url(resources/lift.png);
     width: 36px;
     height: 36px;
     left: 0;
@@ -235,7 +235,7 @@ TowerLift.observeChildren('person', function(people) {
   }
 
   if (overlay) {
-    var url = '/resources/lift/overlay-' + overlay + '.png';
+    var url = 'resources/lift/overlay-' + overlay + '.png';
     this.overlayDom_.style.backgroundImage = 'url(' + url + ')';
   } else {
     this.overlayDom_.style.backgroundImage = '';
