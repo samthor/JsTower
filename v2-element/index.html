@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="import" href="import-tower.html" />
+</head>
+<body>
+
+<tower-base>
+  <tower-shaft bottom="0" top="2" at="0">
+    <tower-lift floor="0"></tower-lift>
+    <tower-lift floor="0"></tower-lift>
+    <tower-lift floor="2"></tower-lift>
+  </tower-shaft>
+  <tower-shaft bottom="2" top="4" at="0">
+    <tower-lift floor="4"></tower-lift>
+  </tower-shaft>
+  <tower-floor id="first"><!-- ground floor -->
+  </tower-floor>
+  <tower-floor id="second">
+    <tower-room></tower-room>
+    <tower-room></tower-room>
+    <tower-room></tower-room>
+  </tower-floor>
+  <tower-floor>
+    <tower-room></tower-room>
+  </tower-floor>
+  <tower-floor>
+    <tower-room></tower-room>
+    <tower-room></tower-room>
+  </tower-floor>
+  <tower-floor>
+    <tower-room></tower-room>
+  </tower-floor>
+</tower-base>
+
+<button id="spawn">Spawn Person</button>
+
+<script>
+
+window.setTimeout(function() {
+  var floor = document.getElementById('second');
+  var room = document.createElement('tower-room');
+  floor.appendChild(room);
+}, 1000);
+
+
+var randomRoom = function(base) {
+  var rooms = base.querySelectorAll('tower-room');
+  var v = Math.floor(Math.random() * rooms.length);
+  return rooms[v];
+};
+
+var spawnPerson = function() {
+  var base = document.querySelector('tower-base');
+  var room = randomRoom(base);
+
+  var p = document.createElement('tower-person');
+  p.target = room;
+  base.appendChild(p);
+  p.notify();
+
+  window.setTimeout(function() {
+    p.target = null;
+    p.notify();  // gotta leave
+  }, Math.random() * 20000);
+};
+
+
+for (var i = 0; i < 100; ++i) {
+  window.setTimeout(spawnPerson, i * 100);
+}
+document.getElementById('spawn').addEventListener('click', spawnPerson);
+
+</script>
+
+</body>
+</html>

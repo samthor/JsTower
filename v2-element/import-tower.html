@@ -1,0 +1,424 @@
+<script src="helper.js"></script>
+<script>
+tower.grid = 36;
+tower.timeFactor = 1;
+tower.shaftCallTick = 0.5;
+</script>
+<link rel="import" href="import-towermove.html" />
+
+<!-- base element -->
+<template id="tower-base">
+  <style>
+  :host {
+    width: 432px;
+    height: 288px; /* multiple of 32px */
+    border: 2px solid #314138;
+    border-radius: 2px;
+    background: url(/resources/background.png) bottom repeat-x #c5edfa;
+    display: block;
+    position: relative;
+  }
+  #floors {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    position: relative;
+    height: 100%;
+  }
+  #shafts {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+  }
+  </style>
+  <div id="floors">
+    <content select="tower-floor"></content>
+  </div>
+  <div id="shafts">
+    <content select="tower-shaft"></content>
+  </div>
+</template>
+<script>
+var TowerBase = tower.registerPart('base');
+
+TowerBase.observeChildren('floor', function(floors) {
+  floors.forEach(function(floor, i) {
+    floor.number = i;
+    floor.nextFloor = floors[i-1];
+  });
+  this.floors = floors;
+});
+
+/**
+ * Returns the TowerShaft instances which go to the given numbered floor.
+ * @param {number} floor to look at
+ * @return {!Array.<!TowerShaft>} shafts that go to this floor
+ */
+TowerBase.prototype.shaftsForFloor = function(floor) {
+  var shafts = tower.childrenOfType(this, TowerShaft);
+  return shafts.filter(function(shaft) {
+    return shaft.top >= floor && shaft.bottom <= floor;
+  });
+};
+
+</script>
+
+<!-- floor element -->
+<template id="tower-floor">
+  <style>
+  :host {
+    display: flex;
+    height: 36px;
+    position: relative;
+  }
+  #floor {
+    width: 100%;
+    height: 36px;
+    display: flex;
+    justify-content: center;
+    background: url(/resources/floor.png) repeat-x bottom;
+  }
+  #floor::before,
+  #floor::after {
+    display: inline-block;
+    position: absolute;
+    content: "";
+    width: 24px;
+    height: 36px;
+  }
+  #floor::before {
+    background-image: url(/resources/stairs-l.png);
+    left: -24px;
+  }
+  #floor::after {
+    background-image: url(/resources/stairs-r.png);
+    right: -24px;
+  }
+  #data {
+    line-height: 18px;
+    color: white;
+    font-size: 14px;
+    width: 36px;
+    text-align: center;
+    font-family: Arial;
+  }
+  #number {
+    color: red;
+  }
+  #number::before {
+    content: "#";
+  }
+  </style>
+  <div id="floor">
+    <div id="data">
+      <div id="number">1</div>
+      <div id="count"></div>
+    </div>
+    <content select="tower-room"></content>
+  </div>
+</template>
+<script>
+
+var TowerFloor = tower.registerPart('floor');
+TowerFloor.observeChildren('room', function() {
+  if (this.nextFloor_) {
+    this.nextFloor_.updateWidthRequirement(this.offsetWidth);
+  }
+});
+
+TowerFloor.observeChildren('person', function(people) {
+  var count = this.shadowRoot.getElementById('count');
+  count.innerText = people.length || '';
+});
+
+TowerFloor.prototype.__defineGetter__('nextFloor', function() {
+  return this.nextFloor_;
+});
+TowerFloor.prototype.__defineSetter__('nextFloor', function(floor) {
+  floor = floor || null;
+  if (this.nextFloor_) {
+    this.nextFloor_.updateWidthRequirement(0);
+  }
+  this.nextFloor_ = floor;
+  if (floor) {
+    floor.updateWidthRequirement(this.width);
+  }
+});
+
+TowerFloor.prototype.__defineGetter__('number', function() {
+  return this.number_;
+});
+TowerFloor.prototype.__defineSetter__('number', function(number) {
+  this.number_ = number;
+  var display = this.shadowRoot.getElementById('number');
+  display.innerText = number;
+});
+
+
+TowerFloor.prototype.__defineGetter__('width', function() {
+  return Math.max(this.width_ || 0, this.offsetWidth);
+});
+
+TowerFloor.prototype.updateWidthRequirement = function(width) {
+  var current = this.width_ || 0;
+  if (width == current) {
+    return;
+  }
+
+  this.width_ = Math.max(this.offsetWidth, width);
+  this.style.minWidth = this.width_ + 'px';
+  if (this.nextFloor_) {
+    this.nextFloor_.updateWidthRequirement(this.width_);
+  }
+};
+
+</script>
+
+<template id="tower-room">
+  <style>
+  :host {
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 255, 0.5);
+    min-width: 64px;
+    height: 36px;
+    display: inline-block;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.75);
+    letter-spacing: 1px;
+    padding-top: 4px;
+    font-size: 24px;
+    line-height: 32px;
+    font-family: "Arial", Sans-Serif;
+  }
+  </style>
+  <span id="people"></span>
+</template>
+<script>
+
+var TowerRoom = tower.registerPart('room');
+TowerRoom.observeChildren('person', function(people) {
+  var p = this.shadowRoot.getElementById('people');
+  var text = people.length ? people.length : '.';
+  p.innerText = text;
+});
+
+</script>
+
+
+
+<!-- no template for person -->
+<script>
+
+var TowerPerson = tower.registerPart('person', function() {
+  this.target_ = null;  // presume means 'out of building'?
+  this.notify_ = false;
+});
+
+/**
+ * @constructor
+ * @param {Object} via to go via
+ * @param {number} floor number to head to
+ * @param {Step=} opt_prev step taken
+ */
+TowerPerson.Step = function(via, floor, opt_prev) {
+  this.via = via;
+  this.floor = floor;
+  this.prev = opt_prev || null;
+};
+
+TowerPerson.prototype.__defineSetter__('target', function(target) {
+  this.target_ = target;
+  this.path_ = null;
+});
+
+TowerPerson.prototype.__defineGetter__('targetFloor', function() {
+  if (!this.target_) {
+    return 0;
+  } else if (this.target_ instanceof TowerRoom) {
+    return this.target_.parentElement.number;
+  } else if (this.target_ instanceof TowerFloor) {
+    return this.target_.number;
+  }
+  return 0; // leave anyway
+});
+
+TowerPerson.prototype.__defineGetter__('currentFloor', function() {
+  if (this.parentElement instanceof TowerRoom) {
+    return this.parentElement.parentElement.number;
+  } else if (this.parentElement instanceof TowerFloor) {
+    return this.parentElement.number;
+  }
+  return -1;
+});
+
+TowerPerson.prototype.findPath = function() {
+  var currentFloor = this.currentFloor;
+  if (currentFloor < 0) {
+    throw new Error('not on a floor, cannot find path');
+  }
+  var targetFloor = this.targetFloor;
+  var base = tower.baseOf(this);
+
+  var visited = {};  // floor to true
+  var cands = [new TowerPerson.Step(null, currentFloor)];
+
+  while (cands.length) {
+    var curr = cands.shift();
+    if (curr.floor == targetFloor) {
+      console.info(curr);
+      return curr;  // success!
+    }
+    visited[curr.floor] = true;
+
+    var shafts = base.shaftsForFloor(curr.floor);
+    var floors = {};
+    shafts.filter(function(shaft) {
+      return shaft != curr.via;
+    }).forEach(function(shaft) {
+      for (var i = shaft.bottom; i <= shaft.top; ++i) {
+        if (i in visited) {
+          continue;
+        }
+        if (!(i in floors)) {
+          floors[i] = [];
+        }
+        floors[i].push(shaft);
+      }
+    });
+
+    var order = Object.keys(floors);
+    // order.sort(function(a, b) {
+    //   a = Math.abs(a - targetFloor);
+    //   b = Math.abs(b - targetFloor);
+    //   if (a < b) {
+    //     return -1;
+    //   } else if (a > b) {
+    //     return +1;
+    //   } else {
+    //     return 0;
+    //   }
+    // });
+
+    order.forEach(function(floor) {
+      floors[floor].forEach(function(shaft) {
+        cands.push(new TowerPerson.Step(shaft, floor, curr))
+      });
+    });
+  }
+
+  return null;  // no dice
+};
+
+TowerPerson.prototype.notify = function(notifyElement) {
+  window.clearTimeout(this.notify_);
+  if (this.parentElement == null) {
+    console.info('done: person removed from tower');
+    return;
+  }
+  this.notify_ = window.setTimeout(this.notify.bind(this), 1000);
+
+  /** Check for brand new TowerPerson as part of TowerBase. */
+  if (this.parentElement instanceof TowerBase) {
+    console.info('working: inserted into ground floor');
+    this.parentElement.floors[0].appendChild(this);
+    return;
+  }
+
+  /** Check already inside TowerRoom. */
+  if (this.parentElement instanceof TowerRoom) {
+    if (this.target_ == this.parentElement) {
+      console.info('success: got to room');
+    } else {
+      console.info('working: leaving room for floor');
+      this.parentElement.parentElement.appendChild(this);
+    }
+    return;
+  }
+
+  /** If the person is on a lift, either step forward or get off. */
+  if (this.parentElement instanceof TowerLift) {
+    var lift = this.parentElement;
+    var step = this.path_ ? this.path_[0] : null;  // TODO: nulls showing up here
+    var base = tower.baseOf(this);
+
+    if (step && lift.actualFloor == step.floor) {
+      console.info('working: getting out of lift on floor', step.floor);
+      var floor = base.floors[step.floor];
+      floor.appendChild(this);
+    } else if (!step || lift.pushButton(step.floor)) {
+      console.warn('working: in wrong lift, can\'t get to floor here', step);
+      this.path_ = null;
+      if (lift.stoppedAtFloor) {
+        var floor = base.floors[lift.actualFloor];
+        floor.appendChild(this);
+      }
+    } else {
+      // listen to elevator music
+    }
+    return;
+  }
+
+  /** The person therefore must be in a floor. */
+  if (!(this.parentElement instanceof TowerFloor)) {
+    throw new Error('expected Person to be on TowerFloor');
+  }
+  var floor = this.parentElement;
+
+  /** Generate a path if required. Can only do this from floors. */
+  if (!this.path_) {
+    var path = this.findPath();
+    if (path == null) {
+      // TODO: walk down fire stairs instead
+      console.warn('failure: can\'t find path to floor, leaving tower');
+      this.parentElement.removeChild(this);
+      return;
+    }
+    this.path_ = [];
+    while (path) {
+      this.path_.unshift(path);
+      path = path.prev;
+    }
+    console.info('found path to target', this.path_);
+  }
+
+  /** Either we're here, or wait for a lift. */
+  if (!this.path_.length) {
+    if (!this.target_) {
+      this.parentElement.removeChild(this);      
+    } else if (this.target_ == floor) {
+      console.info('success: got to floor');
+    } else if (this.target_.parentElement == floor) {
+      console.info('success: got to floor, entering room');
+      this.target_.appendChild(this);
+    } else {
+      throw new Error('got to floor ' + floor.number + ' with no target');
+    }
+    this.path_ = null;
+    return;
+  }
+  var step = this.path_[0];
+  if (step.floor == floor.number) {
+    console.info('working: got to floor as step', step.floor);
+    this.path_.shift();
+    return;
+  }
+
+  // otherwise, wait for shaft via...
+  if (notifyElement && notifyElement.parentElement == step.via) {
+    if (notifyElement.actualFloor != floor.number) {
+      throw new Error('notified for lift not at our floor');
+    }
+    console.info('working: lift arrived at', floor.number);
+    notifyElement.appendChild(this);
+  } else {
+    console.info('working: calling shaft lift to', floor.number);
+    step.via.callLift(floor.number);
+  }
+};
+
+</script>

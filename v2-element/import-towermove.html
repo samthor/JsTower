@@ -1,0 +1,387 @@
+<template id="tower-shaft">
+  <style>
+  :host {
+    position: relative;
+    width: 36px;
+    display: block;
+  }
+  #shaft {
+    position: absolute;
+    background: url(/resources/shaft.png) repeat-y center bottom;
+    opacity: 0.5;
+    width: 36px;
+    min-height: 36px;
+    display: block;
+    transition: opacity 0.25s;
+    bottom: 0;
+  }
+  #shaft:hover {
+    opacity: 1.0;
+  }
+  #shaft::before {
+    position: absolute;
+    display: inline-block;
+    content: "";
+    top: -36px;
+    width: 36px;
+    height: 36px;
+    background: url(/resources/shaft-top.png) center no-repeat;
+  }
+  #shaft::after {
+    position: absolute;
+    display: inline-block;
+    content: "";
+    bottom: -36px;
+    width: 36px;
+    height: 36px;
+    background: url(/resources/shaft-bottom.png) center no-repeat;
+  }
+  </style>
+  <div id="shaft">
+    <content select="tower-lift"></content>
+  </div>
+</template>
+<template id="tower-lift">
+  <style>
+  :host {
+    display: block;
+    position: absolute;
+    background: url(/resources/lift.png);
+    width: 36px;
+    height: 36px;
+    left: 0;
+    bottom: 0;
+    transition: bottom 1.0s;
+    opacity: 0.8;
+  }
+  #overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: transparent center no-repeat;
+  }
+  </style>
+  <div id="overlay">
+  </div>
+</template>
+<script>
+var TowerShaft = tower.registerPart('shaft', function() {
+  this.shaftDom_ = this.shadowRoot.getElementById('shaft');
+  this.call_ = {};
+  this.callInterval_ = false;
+
+  this.shaftDom_.addEventListener('click', function(ev) {
+    if (ev.toElement != this.shaftDom_) {
+      return;  // probably hit a lift, too hard for now (not part of shadow DOM)
+    }
+    var y = ev.offsetY;
+    var floor = Math.floor((this.top - this.bottom + 1) - (y / tower.grid) + this.bottom);
+    if (floor > this.top || floor < this.bottom) {
+      return;  // probably the ::after or ::before
+    }
+    this.callLift(floor);
+  }.bind(this));
+});
+
+TowerShaft.observeAttrs(['top', 'bottom', 'at'], function(data) {
+  if (data.bottom > data.top) {
+    throw new Error('shaft bottom is above top');
+  }
+  this.shaftDom_.style.bottom = (data.bottom * tower.grid) + 'px';
+  this.shaftDom_.style.height = ((data.top - data.bottom + 1) * tower.grid) + 'px';
+});
+
+TowerShaft.prototype.__defineGetter__('bottom', function() {
+  return parseInt(this.getAttribute('bottom')) || 0;
+});
+
+TowerShaft.prototype.__defineGetter__('top', function() {
+  return parseInt(this.getAttribute('top')) || 0;
+});
+
+/**
+ * Called regularly while there are pending call buttons.
+ */
+TowerShaft.prototype.callTick_ = function() {
+  if (!Object.keys(this.call_).length) {
+    window.clearInterval(this.callInterval_);
+    this.callInterval_ = false;
+    return; // nothing to do
+  }
+
+  if (!this.callInterval_) {
+    var ms = tower.shaftCallTick * tower.timeFactor * 1000;
+    this.callInterval_ = window.setInterval(this.callTick_.bind(this), ms);
+  }
+
+  var any = false;
+  for (var k in this.call_) {
+    if (!this.call_[k]) {
+      any = true;
+      break;
+    }
+  }
+  if (!any) {
+    return; // everything is locked
+  }
+
+  // TODO: Wake up the nearest lift. Otherwise, calls to a floor with lifts might
+  // bring some other lift here.
+
+  if (!this.lifts_.length) {
+    throw new Error('can\'t awake lift, none exist');
+  }
+  var lift = tower.randomChoice(this.lifts_);
+  console.debug('shaft tick, waking up', lift);
+  lift.awake();
+};
+
+TowerShaft.prototype.callLift = function(floor) {
+  if (floor < this.bottom || floor > this.top) {
+    throw new Error('can\'t call lift outside floor range');
+  }
+  if (!(floor in this.call_)) {
+    this.call_[floor] = 0;
+    this.callTick_();
+  }
+};
+
+TowerShaft.observeChildren('lift', function(lifts) {
+  this.lifts_ = lifts;
+});
+
+/**
+ * Returns the call floors which are unlocked/unclaimed.
+ */
+TowerShaft.prototype.__defineGetter__('call', function() {
+  var out = [];
+  for (var floor in this.call_) {
+    if (this.call_[floor] == 0) {
+      out.push(floor);
+    }
+  }
+  return out;
+});
+
+/**
+ * Called by a TowerLift when it intends to move to a given floor.
+ * @param {!TowerLift} lift arrived there
+ * @param {number} floor it arrived at
+ * @param {number} previousFloor it was at (may be float for emergency stop)
+ */
+TowerShaft.prototype.liftMovingTo = function(lift, floor, previousFloor) {
+  if (floor in this.call_) {
+    // Lock this floor for >longer than it takes to get there.
+    var ms = Math.abs(floor - previousFloor) * tower.timeFactor * 1000;
+    this.call_[floor] += 1;
+    window.setTimeout(function() {
+      if (floor in this.call_) {
+        this.call_[floor] -= 1;
+      }
+    }.bind(this), ms);
+  }
+};
+
+/**
+ * Called by a TowerLift when it is at a given floor.
+ * @param {!TowerLift} lift arrived there
+ * @param {number} floor it arrived at
+ * @param {number} previousFloor it was at (may be float for emergency stop)
+ */
+TowerShaft.prototype.liftAt = function(lift, floor, previousFloor) {
+  if (floor in this.call_) {
+    delete this.call_[floor];
+  }
+
+  var base = tower.baseOf(this);
+  var floor = base.floors[floor];
+
+  // Ding (outside lift)!
+  tower.childrenOfType(floor, TowerPerson).forEach(function(c) {
+    c.notify(lift);
+  });
+
+  // Ding (inside lift!).
+  tower.childrenOfType(lift, TowerPerson).forEach(function(c) {
+    c.notify(lift);
+  });  
+};
+
+var TowerLift = tower.registerPart('lift', function() {
+  this.moving_ = false;
+  this.direction_ = false;
+  this.floor_ = parseInt(this.getAttribute('floor')) || 0;
+  this.style.bottom = ((this.floor_ - this.parentElement.bottom) * tower.grid) + 'px';
+  this.overlayDom_ = this.shadowRoot.querySelector('#overlay');
+  this.capacity_ = 10;
+});
+
+/**
+ * The number of tower-person elements in this TowerLift has changed. Update
+ * the overlay image accordingly.
+ * TODO: try to take them where they want to go?
+ */
+TowerLift.observeChildren('person', function(people) {
+  var maxImage = 5;
+  var overlay;
+  if (people.length <= maxImage) {
+    overlay = people.length;
+  } else if (people.length < (maxImage + this.capacity_) / 2) {
+    overlay = maxImage; // cap at maxImage, then show 'many' after 1/2 way to full
+  } else if (people.length < this.capacity_) {
+    overlay = 'many';
+  } else {
+    overlay = 'full';
+  }
+
+  if (overlay) {
+    var url = '/resources/lift/overlay-' + overlay + '.png';
+    this.overlayDom_.style.backgroundImage = 'url(' + url + ')';
+  } else {
+    this.overlayDom_.style.backgroundImage = '';
+  }
+});
+
+/**
+ * The actual current floor, including floating-point segments of floors.
+ */
+TowerLift.prototype.__defineGetter__('actualFloor', function() {
+  var actualPrevious = this.floor_;
+  if (this.moving_) {
+    actualPrevious = (this.parentElement.offsetHeight - this.offsetTop) / tower.grid;
+  }
+  return actualPrevious;
+});
+
+TowerLift.prototype.__defineGetter__('stoppedAtFloor', function() {
+  return !this.moving_;
+});
+
+/**
+ * Push the floor button inside this TowerLift.
+ * @param {number} floor to press
+ * @return {boolean} false on success, true if button could not be pushed
+ */
+TowerLift.prototype.pushButton = function(floor) {
+  floor = parseInt(floor);
+  if (isNaN(floor)) {
+    throw new Error('NaN floor pressed');
+  }
+  if (floor < this.parentElement.bottom || floor > this.parentElement.top) {
+    console.warn('button pushed for inaccessible floor: wanted',
+        floor, 'range', this.parentElement.bottom, this.parentElement.top);
+    return true;
+  }
+
+  var raw = this.getAttribute('buttons') || '';
+  if (raw.length) {
+    raw += ',';
+  }
+  raw += parseInt(floor);
+  this.setAttribute('buttons', raw);
+  return false;
+};
+
+/**
+ * The lift has arrived at its known floor.
+ * @private
+ * @param {number} previous floor
+ */
+TowerLift.prototype.arrived_ = function(previous) {
+  this.moving_ = false;
+  var floor = this.actualFloor;
+  var buttons = this.buttons_.filter(function(v) {
+    return v != floor;
+  });
+  this.setAttribute('buttons', buttons.join(','));
+  this.parentElement.liftAt(this, floor, previous);
+};
+
+/**
+ * This TowerLift should become awake and go somewhere: use its button list,
+ * direction plus its shaft call list to make a decision.
+ */
+TowerLift.prototype.awake = function() {
+  var floor = this.actualFloor;
+  var candidates = [].concat(this.buttons_).concat(this.parentElement.call);
+  candidates.sort(function(a, b) {
+    a = a - floor;
+    b = b - floor;
+
+    var ds = Math.sign(this.direction_);
+    if (ds) {
+      a *= ds;
+      b *= ds;
+    }
+
+    var as = Math.sign(a);
+    var bs = Math.sign(b);
+
+    if (as < bs) {
+      return -1;
+    } else if (as > bs) {
+      return +1;
+    }
+
+    if (a > b) {
+      return -1;
+    } else if (a < b) {
+      return +1;
+    }
+    return 0;
+  });
+
+  if (candidates.length) {
+    console.debug('lift candidates', candidates, 'curr', floor);
+    var cand = candidates[0];
+    this.setAttribute('floor', cand);
+  }
+};
+
+TowerLift.observeAttrs(['buttons'], function() {
+  this.buttons_ = tower.splitIntAttr(this, 'buttons');
+  this.awake();
+});
+
+TowerLift.observeAttrs(['floor'], function(data) {
+  var targetFloor = parseInt(data.floor) || 0;
+  if (targetFloor != data.floor) {
+    this.setAttribute('floor', targetFloor);
+    return;  // badly formatted, restart
+  }
+  if (targetFloor < this.parentElement.bottom || targetFloor > this.parentElement.top) {
+    console.warn('can\'t move to out of range target floor', targetFloor, this.parentElement.bottom, this.parentElement.top);
+    targetFloor = Math.min(Math.max(targetFloor, this.parentElement.bottom), this.parentElement.top);
+    this.setAttribute('floor', targetFloor);
+    return;  // out of range, restart
+  }
+
+  if (targetFloor == this.floor_) {
+    if (!this.moving_) {
+      this.direction_ = false;
+      this.arrived_(targetFloor);
+    }
+    return;  // no change
+  }
+
+  var actualPrevious = this.actualFloor;
+  if (this.moving_) {
+    console.debug('lift emergency stop at floor', actualPrevious);
+    window.clearTimeout(this.moving_);
+  }
+
+  this.parentElement.liftMovingTo(this, targetFloor, actualPrevious);
+  this.floor_ = targetFloor;  // note for next caller
+
+  var dist = Math.abs(targetFloor - actualPrevious);
+  var time = Math.sqrt(dist) * tower.timeFactor;
+  this.direction_ = targetFloor - actualPrevious;
+  console.debug('lift moving', dist, 'floors', time, 'sec, going', this.direction_);
+
+  this.style.bottom = ((targetFloor - this.parentElement.bottom) * tower.grid) + 'px';
+  this.style.transition = 'bottom ' + time + 's';
+
+  this.moving_ = window.setTimeout(this.arrived_.bind(this, actualPrevious), time * 1000);
+});
+
+</script>
